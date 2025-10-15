@@ -42,9 +42,9 @@ This will:
 
 ## Part 2 — Explore MLflow UI
 ```bash
-mlflow ui --backend-store-uri ./mlruns -p 5000
+mlflow server --host 127.0.0.1 --port 8080 #port number may depend on your installation
 ```
-Then open **http://127.0.0.1:5000** and compare runs, parameters, metrics, and artifacts.
+Then open **http://127.0.0.1:8080** and compare runs, parameters, metrics, and artifacts.
 - Find the **Evidently HTML report** in the artifacts.
 - Download it and inspect the drift/performance sections.
 
@@ -59,4 +59,3 @@ Submit a short PDF (max 2 pages) that includes:
 - Add another model (e.g., RandomForest) and compare in MLflow.
 - Schedule a periodic job that regenerates the Evidently report daily/weekly.
 - Log a confusion matrix image and an ROC curve to artifacts.
-- Create a `Model Registry` entry and transition the best model to "Staging".
