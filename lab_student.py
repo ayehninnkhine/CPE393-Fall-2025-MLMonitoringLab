@@ -21,6 +21,8 @@ DATA_DIR = BASE / "data"
 REPORTS_DIR = BASE / "reports"
 REPORTS_DIR.mkdir(exist_ok=True)
 
+TRACKING_URI = "" #set your tracking URI here
+mlflow.set_tracking_uri(TRACKING_URI)
 EXP_NAME = "mlflow-evidently-lab"
 mlflow.set_experiment(EXP_NAME)
 
