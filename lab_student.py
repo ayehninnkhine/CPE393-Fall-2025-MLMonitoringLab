@@ -1,6 +1,7 @@
 import os
 import mlflow
 import mlflow.sklearn
+from mlflow.models.signature import infer_signature
 import pandas as pd
 import numpy as np
 from pathlib import Path
@@ -11,9 +12,8 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, f1_score, roc_auc_score, roc_curve, confusion_matrix, classification_report
 import matplotlib.pyplot as plt
 
-# Evidently imports
 from evidently.report import Report
-from evidently.metric_preset import DataDriftPreset, TargetDriftPreset, ClassificationPerformancePreset
+from evidently.metric_preset import DataDriftPreset, TargetDriftPreset, ClassificationPreset
 from evidently import ColumnMapping
 
 BASE = Path(__file__).resolve().parent
@@ -21,7 +21,7 @@ DATA_DIR = BASE / "data"
 REPORTS_DIR = BASE / "reports"
 REPORTS_DIR.mkdir(exist_ok=True)
 
-TRACKING_URI = "" #set your tracking URI here
+TRACKING_URI = ""  # set your tracking URI here
 mlflow.set_tracking_uri(TRACKING_URI)
 EXP_NAME = "mlflow-evidently-lab"
 mlflow.set_experiment(EXP_NAME)
@@ -108,37 +108,48 @@ def train_and_log(ref_df, cur_df):
             plt.close(fig2)
             mlflow.log_artifact(str(roc_path))
 
-        # Log the sklearn pipeline as a model
-        mlflow.sklearn.log_model(model, artifact_path="model")
+        # ---- Log the sklearn pipeline as a model (with signature + input_example) ----
+        input_example = X_train.head(5)
+        try:
+            signature = infer_signature(X_train, model.predict(X_train))
+        except Exception:
+            signature = None
+
+        mlflow.sklearn.log_model(
+            model,
+            artifact_path="model",       # MLflow still accepts artifact_path here
+            input_example=input_example, # <-- ADDED
+            signature=signature          # <-- ADDED
+        )
 
         # ---- Evidently report ----
         ref_df_copy = ref_df.copy()
         cur_df_copy = cur_df.copy()
 
-        # Add predictions & proba columns for Evidently mapping
+        # Add predictions & proba columns for Evidently mapping (CURRENT set)
         cur_df_copy["prediction"] = y_pred.astype(int)
         if y_proba is not None:
             cur_df_copy["proba_1"] = y_proba
             cur_df_copy["proba_0"] = 1.0 - y_proba
 
-        # For reference set, compute predictions to enable performance comparison (optional)
-        y_ref_pred = model.predict(ref_df_copy.drop(columns=[target]))
+        # For REFERENCE set, compute predictions/probas using X_train to avoid extra columns issues
+        y_ref_pred = model.predict(X_train)
         ref_df_copy["prediction"] = y_ref_pred.astype(int)
         if hasattr(model.named_steps["clf"], "predict_proba"):
-            ref_proba = model.predict_proba(ref_df_copy.drop(columns=[target]))[:, 1]
+            ref_proba = model.predict_proba(X_train)[:, 1]
             ref_df_copy["proba_1"] = ref_proba
             ref_df_copy["proba_0"] = 1.0 - ref_proba
 
-        column_mapping = ColumnMapping(
-            target=target,
-            prediction="prediction",
-            prediction_probas=["proba_0", "proba_1"]
-        )
+        # Build ColumnMapping via attributes (required in 0.4.33)
+        column_mapping = ColumnMapping()
+        column_mapping.target = target
+        column_mapping.prediction = "prediction"
+        column_mapping.prediction_probas = ["proba_0", "proba_1"]
 
         report = Report(metrics=[
             DataDriftPreset(),
             TargetDriftPreset(),
-            ClassificationPerformancePreset()
+            ClassificationPreset()  # 0.4.33 name
         ])
         report.run(reference_data=ref_df_copy, current_data=cur_df_copy, column_mapping=column_mapping)
 
